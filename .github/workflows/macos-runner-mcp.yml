@@ -28,55 +28,17 @@ jobs:
           echo "TOKEN=$TOKEN" >> "$GITHUB_ENV"
           echo "=== Generated token (length=${#TOKEN}) ==="
 
-      - name: Configure 20GB swap
+      - name: System memory info
         run: |
-          set -e
-          echo "=== Configuring 20GB swap on macOS ==="
-
-          sudo mkdir -p /var/vm
-
-          # Check current swap status
-          echo "Before:"
-          sysctl vm.swapusage
-
-          # Create 20GB swap file
-          echo "Creating 20GB swap file (~15s on fast disk)..."
-          sudo dd if=/dev/zero of=/var/vm/swapfile0 bs=1m count=20480 status=progress
-
-          # Set permissions required by macOS swap system
-          sudo chmod 600 /var/vm/swapfile0
-          sudo chown root:wheel /var/vm/swapfile0
-
-          # Try to reload dynamic_pager (may fail under SIP — that's OK)
-          sudo launchctl unload /System/Library/LaunchDaemons/com.apple.dynamic_pager.plist 2>/dev/null || true
-          sudo launchctl load /System/Library/LaunchDaemons/com.apple.dynamic_pager.plist 2>/dev/null || true
-
-          # Allocate 1GB to trigger kernel swap recognition
-          echo "Triggering memory pressure..."
-          python3 -c "
-          import os, sys
-          chunks = []
-          for i in range(8):
-              chunks.append(os.urandom(128 * 1024 * 1024))  # 8 x 128MB = 1GB
-          print('Memory pressure applied')
-          del chunks
-          " 2>/dev/null || true
-
-          sleep 3
-
-          # Verify
-          echo ""
-          echo "After:"
-          sysctl vm.swapusage
-
-          # Summary
-          echo ""
-          echo "=== Memory Summary ==="
+          echo "=== System Memory ==="
           PHYS_RAM=$(sysctl -n hw.memsize)
           echo "Physical RAM: $(echo "$PHYS_RAM" | awk '{print int($1/1024/1024/1024)" GB"}')"
-          echo "Swap: 20 GB (pre-allocated)"
-          echo "Total effective: ~27 GB"
-          echo "Disk free: $(df -h / | tail -1 | awk '{print $4}')"
+          echo "CPU Cores: $(sysctl -n hw.ncpu)"
+          echo "CPU: $(sysctl -n machdep.cpu.brand_string)"
+          echo "Swap: $(sysctl vm.swapusage | awk -F'= ' '{print $2}')"
+          echo "Disk Free: $(df -h / | tail -1 | awk '{print $4}')"
+          echo "Architecture: $(uname -m)"
+          echo "macOS: $(sw_vers -productVersion) ($(sw_vers -buildVersion))"
 
       - name: Install agent-term
         run: |
