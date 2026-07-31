@@ -2,6 +2,27 @@
 
 A GitHub Actions workflow that turns a macOS runner into an interactive AI agent-accessible machine via [agent-term](https://github.com/michelledupuis/agent-term) MCP server exposed through a Cloudflare Tunnel.
 
+## MiMoCode Config
+
+Add this to your `.mimocode/mimocode.json` to connect MiMoCode to the runner:
+
+```json
+{
+  "mcp": {
+    "agent-term": {
+      "type": "remote",
+      "url": "https://<YOUR-TUNNEL-URL>/mcp",
+      "headers": {
+        "Authorization": "Bearer <YOUR-TOKEN>"
+      },
+      "timeout": 30000
+    }
+  }
+}
+```
+
+Replace `<YOUR-TUNNEL-URL>` and `<YOUR-TOKEN>` with the values from the workflow run.
+
 ## What It Does
 
 When triggered, this workflow:
@@ -12,7 +33,7 @@ When triggered, this workflow:
 4. Starts agent-term and exposes it through a public HTTPS URL
 5. Keeps the runner alive for **5 hours** (configurable)
 
-You can then connect any AI agent (Claude Code, VS Code, Cursor, etc.) to the tunnel URL and interact with the macOS runner as if it were a local terminal.
+You can then connect any AI agent (MiMoCode, Claude Code, VS Code, Cursor, etc.) to the tunnel URL and interact with the macOS runner as if it were a local terminal.
 
 ## Quick Start
 
@@ -30,10 +51,29 @@ After the workflow starts, check the **Step Summary** or download the `macos-run
 
 ### 3. Connect Your AI Agent
 
+#### MiMoCode
+
+Add to `.mimocode/mimocode.json`:
+
+```json
+{
+  "mcp": {
+    "agent-term": {
+      "type": "remote",
+      "url": "https://<YOUR-TUNNEL-URL>/mcp",
+      "headers": {
+        "Authorization": "Bearer <YOUR-TOKEN>"
+      },
+      "timeout": 30000
+    }
+  }
+}
+```
+
 #### Claude Code
 
 ```bash
-claude mcp add macos-runner --transport http https://<your-url>/mcp \
+claude mcp add agent-term --transport http https://<your-url>/mcp \
   --header "Authorization: Bearer <YOUR-TOKEN>"
 ```
 
@@ -44,7 +84,7 @@ Add to `.vscode/mcp.json` or `~/.cursor/mcp.json`:
 ```json
 {
   "mcpServers": {
-    "macos-runner": {
+    "agent-term": {
       "url": "https://<your-url>/mcp",
       "transport": "streamable-http",
       "headers": {
