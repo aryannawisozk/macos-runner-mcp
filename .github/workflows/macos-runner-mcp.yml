@@ -28,6 +28,35 @@ jobs:
           echo "TOKEN=$TOKEN" >> "$GITHUB_ENV"
           echo "=== Generated token (length=${#TOKEN}) ==="
 
+      - name: Configure 20GB swap
+        run: |
+          set -e
+          echo "=== Configuring 20GB swap ==="
+
+          # Remove any existing swap files
+          sudo swapoff /var/vm/swapfile* 2>/dev/null || true
+          sudo rm -f /var/vm/swapfile*
+
+          # Create 20GB swap file
+          echo "Creating 20GB swap file (this takes ~15s)..."
+          sudo mkdir -p /var/vm
+          sudo dd if=/dev/zero of=/var/vm/swapfile bs=1m count=20480 status=progress
+
+          # Set permissions and enable
+          sudo chmod 600 /var/vm/swapfile
+          sudo mkswap /var/vm/swapfile
+          sudo swapon /var/vm/swapfile
+
+          # Verify swap is active
+          echo "=== Swap status ==="
+          sysctl vm.swapusage
+
+          # Show total available memory
+          echo "=== Memory summary ==="
+          echo "Physical RAM: $(sysctl -n hw.memsize | awk '{print int($1/1024/1024/1024)" GB"}')"
+          echo "Swap: $(sysctl vm.swapusage | awk -F'= ' '{print $2}' | awk -F'.' '{print $1}')"
+          echo "Total effective memory: ~27 GB"
+
       - name: Install agent-term
         run: |
           set -e
