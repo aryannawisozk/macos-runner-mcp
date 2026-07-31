@@ -28,18 +28,6 @@ jobs:
           echo "TOKEN=$TOKEN" >> "$GITHUB_ENV"
           echo "=== Generated token (length=${#TOKEN}) ==="
 
-      - name: System memory info
-        run: |
-          echo "=== System Memory ==="
-          PHYS_RAM=$(sysctl -n hw.memsize)
-          echo "Physical RAM: $(echo "$PHYS_RAM" | awk '{print int($1/1024/1024/1024)" GB"}')"
-          echo "CPU Cores: $(sysctl -n hw.ncpu)"
-          echo "CPU: $(sysctl -n machdep.cpu.brand_string)"
-          echo "Swap: $(sysctl vm.swapusage | awk -F'= ' '{print $2}')"
-          echo "Disk Free: $(df -h / | tail -1 | awk '{print $4}')"
-          echo "Architecture: $(uname -m)"
-          echo "macOS: $(sw_vers -productVersion) ($(sw_vers -buildVersion))"
-
       - name: Install agent-term
         run: |
           set -e
