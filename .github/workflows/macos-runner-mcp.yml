@@ -166,21 +166,19 @@ jobs:
           echo ""
           echo "============================================================"
           echo ""
-          echo "  Connect your AI agent:"
+          echo "  Connect your AI agent (MiMoCode):"
           echo ""
-          echo "  # Claude Code"
-          echo "  claude mcp add agent-term --transport http ${MCP_URL} \\"
-          echo "    --header \"Authorization: Bearer ${TOKEN}\""
+          echo "  Add to .mimocode/mimocode.json:"
           echo ""
-          echo "  # VS Code / Cursor (.vscode/mcp.json)"
           echo '  {'
-          echo '    "mcpServers": {'
+          echo '    "mcp": {'
           echo '      "agent-term": {'
+          echo '        "type": "remote",'
           echo "        \"url\": \"${MCP_URL}\","
-          echo '        "transport": "streamable-http",'
           echo '        "headers": {'
           echo "          \"Authorization\": \"Bearer ${TOKEN}\""
-          echo '        }'
+          echo '        },'
+          echo '        "timeout": 30000'
           echo '      }'
           echo '    }'
           echo '  }'
@@ -198,22 +196,20 @@ jobs:
             echo "| **Auth Token** | \`${TOKEN}\` |"
             echo "| **Local endpoint** | \`http://127.0.0.1:${{ env.AGENT_TERM_PORT }}/mcp\` |"
             echo ""
-            echo "### Quick Connect (Claude Code)"
+            echo "### MiMoCode Setup"
             echo ""
-            echo '```bash'
-            echo "claude mcp add agent-term --transport http ${MCP_URL} \\"
-            echo "  --header \"Authorization: Bearer ${TOKEN}\""
-            echo '```'
-            echo ""
-            echo "### VS Code / Cursor"
+            echo "Add to \`.mimocode/mimocode.json\`:"
             echo ""
             echo '```json'
             echo "{"
-            echo "  \"macos-runner\": {"
-            echo "    \"url\": \"${MCP_URL}\","
-            echo "    \"transport\": \"streamable-http\","
-            echo "    \"headers\": {"
-            echo "      \"Authorization\": \"Bearer ${TOKEN}\""
+            echo "  \"mcp\": {"
+            echo "    \"agent-term\": {"
+            echo "      \"type\": \"remote\","
+            echo "      \"url\": \"${MCP_URL}\","
+            echo "      \"headers\": {"
+            echo "        \"Authorization\": \"Bearer ${TOKEN}\""
+            echo "      },"
+            echo "      \"timeout\": 30000"
             echo "    }"
             echo "  }"
             echo "}"
