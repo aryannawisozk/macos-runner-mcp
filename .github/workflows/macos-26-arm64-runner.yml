@@ -1,0 +1,277 @@
+name: macOS 26 ARM64 Runner MCP
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep_alive_hours:
+        description: 'Hours to keep the runner alive (max 5)'
+        required: false
+        default: '5'
+
+permissions:
+  contents: read
+
+env:
+  AGENT_TERM_PORT: '8808'
+  MCP_PASSWORD: 'MacOS'
+
+jobs:
+  macos-mcp:
+    name: macOS 26 ARM64 Runner MCP Server
+    runs-on: macos-26-arm64
+    timeout-minutes: 330
+    steps:
+      - name: Generate auth token
+        run: |
+          TOKEN=$(openssl rand -hex 32)
+          echo "$TOKEN" > /tmp/agent-term-token.txt
+          echo "TOKEN=$TOKEN" >> "$GITHUB_ENV"
+          echo "=== Generated token (length=${#TOKEN}) ==="
+
+      - name: Install agent-term
+        run: |
+          set -e
+          echo "Downloading agent-term from michelledupuis/agent-term releases..."
+
+          # Get latest release info (public repo, no auth needed)
+          RELEASE_JSON=$(curl -sS -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/michelledupuis/agent-term/releases/latest")
+
+          # Extract asset ID for macOS arm64 binary
+          ASSET_ID=$(echo "$RELEASE_JSON" | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)
+          if 'assets' not in d:
+              print(f'ERROR: API returned: {d}', file=sys.stderr)
+              sys.exit(1)
+          matches = [a['id'] for a in d['assets'] if a['name']=='agent-term-macos-arm64']
+          if not matches:
+              print(f'ERROR: asset not found in {[a[\"name\"] for a in d[\"assets\"]]}', file=sys.stderr)
+              sys.exit(1)
+          print(matches[0])
+          ")
+
+          echo "Asset ID: $ASSET_ID"
+
+          # Download the binary
+          curl -sS -L -H "Accept: application/octet-stream" \
+            -o agent-term \
+            "https://api.github.com/repos/michelledupuis/agent-term/releases/assets/${ASSET_ID}"
+
+          chmod +x agent-term
+          echo "=== agent-term installed ==="
+          file agent-term
+          ./agent-term --version
+
+      - name: Install cloudflared
+        run: |
+          set -e
+          echo "Downloading cloudflared..."
+          curl -fsSL -o cloudflared.tgz \
+            "https://github.com/cloudflare/cloudflared/releases/download/2026.7.3/cloudflared-darwin-arm64.tgz"
+          tar -xzf cloudflared.tgz
+          chmod +x cloudflared
+          sudo mv cloudflared /usr/local/bin/cloudflared
+          rm cloudflared.tgz
+          echo "=== cloudflared installed ==="
+          cloudflared --version
+
+      - name: Start agent-term server
+        run: |
+          set -e
+          nohup ./agent-term --token "$TOKEN" \
+            --host 127.0.0.1 --port ${{ env.AGENT_TERM_PORT }} \
+            > agent-term.log 2>&1 &
+          echo $! > agent-term.pid
+          sleep 2
+          if kill -0 $(cat agent-term.pid) 2>/dev/null; then
+            echo "agent-term started (PID $(cat agent-term.pid))"
+          else
+            echo "ERROR: agent-term failed to start"
+            cat agent-term.log
+            exit 1
+          fi
+          cat agent-term.log
+
+      - name: Start cloudflared tunnel
+        run: |
+          set -e
+          nohup cloudflared tunnel --url http://localhost:${{ env.AGENT_TERM_PORT }} \
+            > cf.log 2>&1 &
+          echo $! > cf.pid
+          sleep 2
+          if kill -0 $(cat cf.pid) 2>/dev/null; then
+            echo "cloudflared started (PID $(cat cf.pid))"
+          else
+            echo "ERROR: cloudflared failed to start"
+            cat cf.log
+            exit 1
+          fi
+
+      - name: Wait for tunnel URL
+        run: |
+          set -e
+          echo "Waiting for cloudflared tunnel URL..."
+          URL=""
+          for i in $(seq 1 60); do
+            URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' cf.log 2>/dev/null | head -1)
+            if [ -n "$URL" ]; then
+              echo "$URL" > /tmp/tunnel-url.txt
+              echo "Tunnel URL found: $URL"
+              break
+            fi
+            sleep 2
+          done
+          if [ -z "$URL" ]; then
+            echo "ERROR: Failed to capture tunnel URL after 120s"
+            cat cf.log
+            exit 1
+          fi
+
+          # Wait for DNS propagation (use dig on macOS)
+          HOST=$(echo "$URL" | sed 's|https://||')
+          echo "Waiting for DNS propagation..."
+          for j in $(seq 1 30); do
+            if dig +short "$HOST" 2>/dev/null | grep -q .; then
+              echo "DNS resolved: $(dig +short "$HOST" | head -1)"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Upload connection info
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-runner-connection-info
+          path: |
+            /tmp/tunnel-url.txt
+            /tmp/agent-term-token.txt
+            agent-term.log
+            cf.log
+          retention-days: 1
+
+      - name: Output connection info
+        run: |
+          URL=$(cat /tmp/tunnel-url.txt)
+          MCP_URL="${URL}/mcp"
+          echo ""
+          echo "============================================================"
+          echo "  agent-term MCP Server — LIVE on macOS Runner"
+          echo "============================================================"
+          echo ""
+          echo "  MCP Password : ${{ env.MCP_PASSWORD }}"
+          echo "  MCP URL      : ${MCP_URL}"
+          echo "  Auth Token   : ${TOKEN}"
+          echo "  Local        : http://127.0.0.1:${{ env.AGENT_TERM_PORT }}/mcp"
+          echo ""
+          echo "============================================================"
+          echo ""
+          echo "  MiMoCode Setup (.mimocode/mimocode.json):"
+          echo ""
+          echo '  {'
+          echo '    "mcp": {'
+          echo '      "agent-term": {'
+          echo '        "type": "remote",'
+          echo "        \"url\": \"${MCP_URL}\","
+          echo '        "headers": {'
+          echo "          \"Authorization\": \"Bearer ${TOKEN}\""
+          echo '        },'
+          echo '        "timeout": 30000'
+          echo '      }'
+          echo '    }'
+          echo '  }'
+          echo ""
+          echo "============================================================"
+          echo ""
+          echo "  Direct curl test (recommended):"
+          echo ""
+          echo "  curl -X POST ${MCP_URL} \\"
+          echo "    -H 'Content-Type: application/json' \\"
+          echo "    -H 'Authorization: Bearer ${TOKEN}' \\"
+          echo "    -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{},\"clientInfo\":{\"name\":\"curl\",\"version\":\"1\"}}}'"
+          echo ""
+          echo "============================================================"
+
+          # Write to GitHub Step Summary
+          {
+            echo "## macOS Runner MCP Server — LIVE"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| **MCP Password** | \`${{ env.MCP_PASSWORD }}\` |"
+            echo "| **MCP URL** | \`${MCP_URL}\` |"
+            echo "| **Auth Token** | \`${TOKEN}\` |"
+            echo "| **Local endpoint** | \`http://127.0.0.1:${{ env.AGENT_TERM_PORT }}/mcp\` |"
+            echo ""
+            echo "### MiMoCode Setup"
+            echo ""
+            echo "Add to \`.mimocode/mimocode.json\`:"
+            echo ""
+            echo '```json'
+            echo "{"
+            echo "  \"mcp\": {"
+            echo "    \"agent-term\": {"
+            echo "      \"type\": \"remote\","
+            echo "      \"url\": \"${MCP_URL}\","
+            echo "      \"headers\": {"
+            echo "        \"Authorization\": \"Bearer ${TOKEN}\""
+            echo "      },"
+            echo "      \"timeout\": 30000"
+            echo "    }"
+            echo "  }"
+            echo "}"
+            echo '```'
+            echo ""
+            echo "### Direct curl test (recommended)"
+            echo ""
+            echo '```bash'
+            echo "curl -X POST ${MCP_URL} \\"
+            echo "  -H 'Content-Type: application/json' \\"
+            echo "  -H 'Authorization: Bearer ${TOKEN}' \\"
+            echo "  -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{},\"clientInfo\":{\"name\":\"curl\",\"version\":\"1\"}}}'"
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: Keep alive
+        run: |
+          KEEP_SECONDS=$((${{ inputs.keep_alive_hours || 5 }} * 3600))
+          echo "============================================================"
+          echo "  Runner alive for ${{ inputs.keep_alive_hours || 5 }} hours"
+          echo "  MCP URL: $(cat /tmp/tunnel-url.txt)/mcp"
+          echo "============================================================"
+
+          END_TIME=$((SECONDS + KEEP_SECONDS))
+          HEARTBEAT=600
+          LAST_HB=0
+          while [ $SECONDS -lt $END_TIME ]; do
+            NOW=$SECONDS
+            if [ $((NOW - LAST_HB)) -ge $HEARTBEAT ]; then
+              REMAINING=$(( (END_TIME - NOW) / 60 ))
+              echo "[$(date -u '+%H:%M:%S')] Heartbeat — ${REMAINING}m remaining"
+
+              # Verify processes are alive
+              if ! kill -0 $(cat agent-term.pid 2>/dev/null) 2>/dev/null; then
+                echo "WARNING: agent-term died — restarting..."
+                nohup ./agent-term --token "$TOKEN" \
+                  --host 127.0.0.1 --port ${{ env.AGENT_TERM_PORT }} \
+                  > agent-term.log 2>&1 &
+                echo $! > agent-term.pid
+              fi
+              if ! kill -0 $(cat cf.pid 2>/dev/null) 2>/dev/null; then
+                echo "WARNING: cloudflared died — restarting..."
+                nohup cloudflared tunnel --url http://localhost:${{ env.AGENT_TERM_PORT }} \
+                  > cf.log 2>&1 &
+                echo $! > cf.pid
+              fi
+              LAST_HB=$NOW
+            fi
+            sleep 60
+          done
+          echo "Keep-alive period ended."
+
+      - name: Cleanup
+        if: always()
+        run: |
+          kill $(cat agent-term.pid 2>/dev/null) 2>/dev/null || true
+          kill $(cat cf.pid 2>/dev/null) 2>/dev/null || true
+          echo "Done."
