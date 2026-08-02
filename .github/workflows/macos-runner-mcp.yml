@@ -166,9 +166,7 @@ jobs:
           echo ""
           echo "============================================================"
           echo ""
-          echo "  Connect your AI agent (MiMoCode):"
-          echo ""
-          echo "  Add to .mimocode/mimocode.json:"
+          echo "  MiMoCode Setup (.mimocode/mimocode.json):"
           echo ""
           echo '  {'
           echo '    "mcp": {'
@@ -182,6 +180,15 @@ jobs:
           echo '      }'
           echo '    }'
           echo '  }'
+          echo ""
+          echo "============================================================"
+          echo ""
+          echo "  Direct curl test (recommended):"
+          echo ""
+          echo "  curl -X POST ${MCP_URL} \\"
+          echo "    -H 'Content-Type: application/json' \\"
+          echo "    -H 'Authorization: Bearer ${TOKEN}' \\"
+          echo "    -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{},\"clientInfo\":{\"name\":\"curl\",\"version\":\"1\"}}}'"
           echo ""
           echo "============================================================"
 
@@ -213,6 +220,15 @@ jobs:
             echo "    }"
             echo "  }"
             echo "}"
+            echo '```'
+            echo ""
+            echo "### Direct curl test (recommended)"
+            echo ""
+            echo '```bash'
+            echo "curl -X POST ${MCP_URL} \\"
+            echo "  -H 'Content-Type: application/json' \\"
+            echo "  -H 'Authorization: Bearer ${TOKEN}' \\"
+            echo "  -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-03-26\",\"capabilities\":{},\"clientInfo\":{\"name\":\"curl\",\"version\":\"1\"}}}'"
             echo '```'
           } >> $GITHUB_STEP_SUMMARY
 
